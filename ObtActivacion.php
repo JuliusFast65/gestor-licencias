@@ -1,4 +1,4 @@
-<?
+<?php
 //*--------------------------------------------------------------------------*
 // FUNCION:  ObtActivacion
 // OBJETIVO: ALGORITMO QUE OBTIENE UN NUMERO EQUIVALENTE A PARTIR DE UN
