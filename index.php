@@ -42,6 +42,7 @@ if (!$usuario) {
         <a href="Consultar.php" class="menu-btn">Gestión de Licencias</a>
         <a href="reporte_licencias.php" class="menu-btn">Reporte de Licencias</a>
         <a href="reporte_empresas.php" class="menu-btn">Reporte de Empresas</a>
+        <a href="reporte_errores.php" class="menu-btn">Reporte de Errores ERP</a>
         <!-- Aquí puedes agregar más opciones de menú en el futuro -->
     </div>
 </body>
