@@ -67,15 +67,6 @@ try {
         throw new Exception('EN LISTA NEGRA', 403);
     }
 
-    // Soporte de nuevo licenciamiento según versión
-    $Soporta_Nuevo = false;
-    if ($Sistema === 'FSOFT' && version_compare($Version, '5.2.89', '>=')) {
-        $Soporta_Nuevo = true;
-    } elseif ($Sistema === 'LSOFT' && version_compare($Version, '2.1.36', '>=')) {
-        $Soporta_Nuevo = true;
-    }
-
-
     // Verificar existencia de empresa
     $stmt = $conn->prepare('SELECT * FROM Empresas WHERE RUC = ?');
     $stmt->bind_param('s', $RUC);
@@ -85,6 +76,24 @@ try {
         throw new Exception('EMPRESA NO REGISTRADA', 404);
     }
     $regEmpresa = $res->fetch_assoc();
+
+    // Soporte de nuevo licenciamiento según campos de tipo de licenciamiento
+    $Soporta_Nuevo = false;
+    $NuevoEsquemaLicenciamiento = 'N'; // Por defecto, licenciamiento antiguo
+    
+    if ($Sistema === 'FSOFT') {
+        $tipoLicFsoft = trim($regEmpresa['Tipo_Lic_FSOFT'] ?? 'M');
+        $Soporta_Nuevo = !empty($tipoLicFsoft) && $tipoLicFsoft === 'S';
+        $NuevoEsquemaLicenciamiento = $Soporta_Nuevo ? 'S' : 'N';
+    } elseif ($Sistema === 'LSOFT') {
+        $tipoLicLsoft = trim($regEmpresa['Tipo_Lic_LSOFT'] ?? 'M');
+        $Soporta_Nuevo = !empty($tipoLicLsoft) && $tipoLicLsoft === 'S';
+        $NuevoEsquemaLicenciamiento = $Soporta_Nuevo ? 'S' : 'N';
+    } elseif ($Sistema === 'LSOFTW') {
+        // LSOFT Web siempre por sesión
+        $Soporta_Nuevo = true;
+        $NuevoEsquemaLicenciamiento = 'S';
+    }
 
     // Actualizar datos de la empresa
     $stmtUpd = $conn->prepare(
@@ -193,32 +202,77 @@ try {
             }
         }
     } else {
-        // Licenciamiento antiguo
+        // Licenciamiento antiguo (por máquina/slot)
         $fieldMax = $Sistema === 'FSOFT' ? 'Cant_Lic_FSOFT_BA' : 'Cant_Lic_LSOFT_BA';
         $max      = (int)$regEmpresa[$fieldMax];
-        $stmtCnt = $conn->prepare('SELECT COUNT(*) AS total FROM Licencias WHERE RUC = ? AND Sistema = ?');
-        $stmtCnt->bind_param('ss', $RUC, $Sistema);
-        $stmtCnt->execute();
-        $total = $stmtCnt->get_result()->fetch_assoc()['total'];
-        if ($total >= $max) {
-            throw new Exception("EXCEDE CANTIDAD DE LICENCIAS $max", 403);
-        }
-        $stmtIns2 = $conn->prepare(
-            'INSERT INTO Licencias (RUC, Serie, Maquina, Alta, IP, Tipo_Licencia, Sistema, Ultimo_Acceso, Cantidad_de_Accesos) VALUES (?, ?, ?, NOW(), ?, ?, ?, NOW(), 1)'
-        );
+        
+                 // Verificar si ya existe una licencia con la misma serie, sistema y RUC
+         $stmtExist = $conn->prepare('SELECT COUNT(*) as total FROM Licencias WHERE RUC = ? AND Serie = ? AND Sistema = ?');
+         $stmtExist->bind_param('sss', $RUC, $Serie, $Sistema);
+         $stmtExist->execute();
+         $resExist = $stmtExist->get_result();
+         $totalExist = $resExist->fetch_assoc()['total'];
+         
+         if ($totalExist >= 1) {
+             // La licencia ya existe (puede haber duplicados)
+             
+             // Si hay múltiples registros duplicados, eliminar todos excepto el más reciente
+             if ($totalExist > 1) {
+                 $stmtDelete = $conn->prepare('DELETE l1 FROM Licencias l1 
+                     INNER JOIN Licencias l2 ON l1.RUC = l2.RUC AND l1.Serie = l2.Serie AND l1.Sistema = l2.Sistema 
+                     WHERE l1.RUC = ? AND l1.Serie = ? AND l1.Sistema = ? AND l1.Ultimo_Acceso < l2.Ultimo_Acceso');
+                 $stmtDelete->bind_param('sss', $RUC, $Serie, $Sistema);
+                 if (!$stmtDelete->execute()) {
+                     throw new Exception('Error eliminando duplicados: ' . $stmtDelete->error, 500);
+                 }
+             }
+             
+             // Obtener el registro que quedó (el más reciente)
+             $stmtGet = $conn->prepare('SELECT * FROM Licencias WHERE RUC = ? AND Serie = ? AND Sistema = ?');
+             $stmtGet->bind_param('sss', $RUC, $Serie, $Sistema);
+             $stmtGet->execute();
+             $info = $stmtGet->get_result()->fetch_assoc();
+             $count = $info['Cantidad_de_Accesos'] + 1;
+             
+             // Actualizar el registro
+             $stmtUpdL = $conn->prepare(
+                 'UPDATE Licencias SET Ultimo_Acceso = NOW(), Maquina = ?, IP = ?, Tipo_Licencia = ?, Cantidad_de_Accesos = ? WHERE RUC = ? AND Serie = ? AND Sistema = ?'
+             );
+             $stmtUpdL->bind_param('sssssss', $Maquina, $ip, $Tipo_Licencia, $count, $RUC, $Serie, $Sistema);
+             if (!$stmtUpdL->execute()) {
+                 throw new Exception('Error actualizando licencia antigua: ' . $stmtUpdL->error, 500);
+             }
+        } else {
+            // La licencia no existe, verificar si hay cupo disponible
+            $stmtCnt = $conn->prepare('SELECT COUNT(*) AS total FROM Licencias WHERE RUC = ? AND Sistema = ?');
+            $stmtCnt->bind_param('ss', $RUC, $Sistema);
+            $stmtCnt->execute();
+            $total = $stmtCnt->get_result()->fetch_assoc()['total'];
+            
+            if ($total >= $max) {
+                throw new Exception("EXCEDE CANTIDAD DE LICENCIAS $max", 403);
+            }
+            
+            // Hay cupo disponible, agregar nueva licencia
+            $stmtIns2 = $conn->prepare(
+                'INSERT INTO Licencias (RUC, Serie, Maquina, Alta, IP, Tipo_Licencia, Sistema, Ultimo_Acceso, Cantidad_de_Accesos) VALUES (?, ?, ?, NOW(), ?, ?, ?, NOW(), 1)'
+            );
 
-        // Verifica que prepare() no fallara
-        if (!$stmtIns2) {
-            log_debug('Prepare failed', ['error' => $conn->error]);
-            throw new Exception('Error en prepare(): ' . $conn->error, 500);
-        }
+            // Verifica que prepare() no fallara
+            if (!$stmtIns2) {
+                log_debug('Prepare failed', ['error' => $conn->error]);
+                throw new Exception('Error en prepare(): ' . $conn->error, 500);
+            }
 
-        $stmtIns2->bind_param('ssssss', $RUC, $Serie, $Maquina, $ip, $Tipo_Licencia, $Sistema);
-        if (!$stmtIns2->execute()) {
-            throw new Exception('Error registrando licencia antigua: ' . $stmtIns2->error, 500);
-        }
-        if (!mail($to, $subject, $body, $headers)) {
-            log_debug('Fallo envío notificación.');
+            $stmtIns2->bind_param('ssssss', $RUC, $Serie, $Maquina, $ip, $Tipo_Licencia, $Sistema);
+            if (!$stmtIns2->execute()) {
+                throw new Exception('Error registrando licencia antigua: ' . $stmtIns2->error, 500);
+            }
+            
+            // Enviar correo solo para nuevas licencias
+            if (!mail($to, $subject, $body, $headers)) {
+                log_debug('Fallo envío notificación.');
+            }
         }
     }
 
@@ -250,10 +304,11 @@ try {
     
     // Preparo el array de respuesta
     $respuesta = [
-        'Fin'              => 'OK',
-        'Mensaje'          => $Mensaje,
-        'Token'            => $Token,
-        'Fin_Suscripcion'  => $Fin_Suscripcion,
+        'Fin'                        => 'OK',
+        'Mensaje'                    => $Mensaje,
+        'Token'                      => $Token,
+        'Fin_Suscripcion'            => $Fin_Suscripcion,
+        'NuevoEsquemaLicenciamiento' => $NuevoEsquemaLicenciamiento,
     ];
 
     // Si hay una nueva versión, la pongo en la respuesta
@@ -277,10 +332,11 @@ try {
     http_response_code($code);
     
     $error = [
-        'Fin'               => 'Error',
-        'Mensaje'           => $e->getMessage(),
-        'Token'             => $Token ?? '',
-        'Fin_Suscripcion'   => $Fin_Suscripcion ?? '',
+        'Fin'                        => 'Error',
+        'Mensaje'                    => $e->getMessage(),
+        'Token'                      => $Token ?? '',
+        'Fin_Suscripcion'            => $Fin_Suscripcion ?? '',
+        'NuevoEsquemaLicenciamiento' => $NuevoEsquemaLicenciamiento ?? 'N',
     ];
 
     echo json_encode($error);

@@ -67,6 +67,14 @@ function renderizarFormularioEmpresa(mysqli $conn, ?string $Ruc): void {
     $enListaNegra = $val('En_Lista_Negra');
     $opcionSiSeleccionada = $enListaNegra === '1' ? 'selected' : '';
     $opcionNoSeleccionada = $enListaNegra !== '1' ? 'selected' : '';
+    
+    // Variables para los selectores de tipo de licenciamiento
+    $tipoLicFsoft = $val('Tipo_Lic_FSOFT') ?: 'M';
+    $tipoLicLsoft = $val('Tipo_Lic_LSOFT') ?: 'M';
+    $opcionMaquinaFsoft = $tipoLicFsoft === 'M' ? 'selected' : '';
+    $opcionSesionFsoft = $tipoLicFsoft === 'S' ? 'selected' : '';
+    $opcionMaquinaLsoft = $tipoLicLsoft === 'M' ? 'selected' : '';
+    $opcionSesionLsoft = $tipoLicLsoft === 'S' ? 'selected' : '';
 
     echo <<<HTML
     <!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>{$tituloPagina}</title>
@@ -163,6 +171,13 @@ HTML;
                     <h4 class="sub-section-title">F-Soft (Escritorio)</h4>
                     <div class="form-grid" style="display: grid; grid-template-columns: repeat(4,1fr); gap: 20px;">
                         <div class="input-group">
+                            <label for="Tipo_Lic_FSOFT">Tipo Licenciamiento</label>
+                            <select id="Tipo_Lic_FSOFT" name="Tipo_Lic_FSOFT">
+                                <option value="M" {$opcionMaquinaFsoft}>Máquina</option>
+                                <option value="S" {$opcionSesionFsoft}>Sesión</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
                             <label for="Version_FSoft">Versión</label>
                             <input type="text" id="Version_FSoft" name="Version_FSoft"
                                    value="{$val('Version_FSoft')}" maxlength="10" readonly>
@@ -186,6 +201,13 @@ HTML;
                 
                     <h4 class="sub-section-title">L-Soft (Escritorio)</h4>
                     <div class="form-grid" style="display: grid; grid-template-columns: repeat(4,1fr); gap: 20px;">
+                        <div class="input-group">
+                            <label for="Tipo_Lic_LSOFT">Tipo Licenciamiento</label>
+                            <select id="Tipo_Lic_LSOFT" name="Tipo_Lic_LSOFT">
+                                <option value="M" {$opcionMaquinaLsoft}>Máquina</option>
+                                <option value="S" {$opcionSesionLsoft}>Sesión</option>
+                            </select>
+                        </div>
                         <div class="input-group">
                             <label for="Version_LSoft">Versión</label>
                             <input type="text" id="Version_LSoft" name="Version_LSoft"
@@ -310,6 +332,7 @@ function procesarFormularioEmpresa(mysqli $conn, ?string $RucEdicion): void {
         'RUC', 'Nombre', 'Telefono', 'Ciudad', 'eMail', 'eMail2', 'Comentario',
         'Inicio_Suscripcion', 'Fin_Suscripcion', 'En_Lista_Negra', 'Motivo_Lista_Negra',
         'Version_FSoft', 'Version_LSoft', 'Version_LSoft_Web',
+        'Tipo_Lic_FSOFT', 'Tipo_Lic_LSOFT',
         'Cant_Lic_FSOFT_BA', 'Cant_Lic_FSOFT_RP', 'Cant_Lic_FSOFT_CE', 
         'Cant_Lic_LSOFT_BA', 'Cant_Lic_LSOFT_RP', 'Cant_Lic_LSOFT_CE', 'Cant_Lic_LSOFT_AF', 'Cant_Lic_LSOFT_OP',
         'Cant_Lic_LSOFTW_BA', 'Cant_Lic_LSOFTW_RP', 'Cant_Lic_LSOFTW_AF', 'Cant_Lic_LSOFTW_OP'
@@ -404,32 +427,51 @@ function procesarFormularioEmpresa(mysqli $conn, ?string $RucEdicion): void {
  * Retorna resultados en formato JSON para AJAX.
  */
 function procesarBusquedaLive(mysqli $conn): void {
-    header('Content-Type: application/json');
-    $terminoBusqueda = $_GET['q'] ?? '';
-    if (strlen($terminoBusqueda) < 2) {
-        echo json_encode([]);
-        exit;
-    }
-    $empresas = [];
-    $param = "%" . $terminoBusqueda . "%";
-    $sql = "SELECT Nombre, RUC, Ciudad, Telefono, Alta, Fin_Suscripcion 
-            FROM Empresas 
-            WHERE Nombre LIKE ? OR RUC LIKE ?
-            ORDER BY Nombre ASC 
-            LIMIT 10";
-    $stmt = $conn->prepare($sql);
-    if ($stmt) {
-        $stmt->bind_param("ss", $param, $param);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        while ($row = $result->fetch_assoc()) {
-            $row['Alta'] = $row['Alta'] ? date('d/m/Y', strtotime($row['Alta'])) : 'N/A';
-            $row['Fin_Suscripcion'] = $row['Fin_Suscripcion'] ? date('d/m/Y', strtotime($row['Fin_Suscripcion'])) : 'N/A';
-            $empresas[] = $row;
+    // Capturar cualquier salida previa
+    if (ob_get_length()) ob_clean();
+    
+    // Configurar headers para JSON
+    header('Content-Type: application/json; charset=utf-8');
+    
+    try {
+        $terminoBusqueda = $_GET['q'] ?? '';
+        if (strlen($terminoBusqueda) < 2) {
+            echo json_encode([]);
+            exit;
         }
-        $stmt->close();
+        
+        $empresas = [];
+        $param = "%" . $terminoBusqueda . "%";
+        $sql = "SELECT Nombre, RUC, Ciudad, Telefono, Alta, Fin_Suscripcion 
+                FROM Empresas 
+                WHERE Nombre LIKE ? OR RUC LIKE ?
+                ORDER BY Nombre ASC 
+                LIMIT 10";
+        
+        $stmt = $conn->prepare($sql);
+        if ($stmt) {
+            $stmt->bind_param("ss", $param, $param);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $row['Alta'] = $row['Alta'] ? date('d/m/Y', strtotime($row['Alta'])) : 'N/A';
+                $row['Fin_Suscripcion'] = $row['Fin_Suscripcion'] ? date('d/m/Y', strtotime($row['Fin_Suscripcion'])) : 'N/A';
+                $empresas[] = $row;
+            }
+            $stmt->close();
+        }
+        
+        echo json_encode($empresas, JSON_UNESCAPED_UNICODE);
+        
+    } catch (Exception $e) {
+        // En caso de error, devolver JSON con información del error
+        http_response_code(500);
+        echo json_encode([
+            'error' => true,
+            'message' => 'Error en la búsqueda: ' . $e->getMessage()
+        ], JSON_UNESCAPED_UNICODE);
     }
-    echo json_encode($empresas);
+    
     exit;
 }
 
@@ -492,13 +534,39 @@ function renderizarScriptBusqueda(): string {
                 }
                 debounceTimer = setTimeout(() => {
                     contenedorResultados.innerHTML = '<p>Buscando...</p>';
-                    fetch(`?Accion=Buscar_Empresas_Live&q=\${encodeURIComponent(termino)}`)
+                    fetch(`busqueda_directa.php?q=\${encodeURIComponent(termino)}`)
                         .then(response => {
-                            if (!response.ok) { throw new Error('Error en la red o en el servidor'); }
+                            if (response.status === 401) {
+                                // No autenticado, redirigir al login
+                                window.location.href = 'Consultar.php';
+                                return;
+                            }
+                            if (!response.ok) { 
+                                throw new Error('Error en la red o en el servidor (HTTP ' + response.status + ')'); 
+                            }
                             return response.json();
                         })
-                        .then(empresas => {
+                        .then(data => {
                             contenedorResultados.innerHTML = '';
+                            
+                            // Verificar si hay error en la respuesta JSON
+                            if (data.error) {
+                                if (data.redirect === 'login') {
+                                    // Redirigir al login si no está autenticado
+                                    window.location.href = 'Consultar.php';
+                                    return;
+                                }
+                                contenedorResultados.innerHTML = '<p style="color: red;">Error: ' + (data.message || 'Error desconocido') + '</p>';
+                                return;
+                            }
+                            
+                            // Verificar que data sea un array
+                            if (!Array.isArray(data)) {
+                                contenedorResultados.innerHTML = '<p style="color: red;">Error: Respuesta inesperada del servidor</p>';
+                                return;
+                            }
+                            
+                            const empresas = data;
                             if (empresas.length === 0) {
                                 contenedorResultados.innerHTML = '<p style="color: #6c757d;">No se encontraron empresas.</p>';
                                 return;
@@ -538,7 +606,7 @@ function renderizarScriptBusqueda(): string {
                         })
                         .catch(error => {
                             console.error('Error en la búsqueda:', error);
-                            contenedorResultados.innerHTML = '<p style="color: red;">Ocurrió un error al realizar la búsqueda.</p>';
+                            contenedorResultados.innerHTML = '<p style="color: red;">Error en la búsqueda: ' + error.message + '</p>';
                         });
                 }, 300);
             });

@@ -1,5 +1,26 @@
 <?php
+// Verificar si este archivo se está ejecutando directamente o siendo incluido
+$es_archivo_principal = !defined('CONSULTAR_INCLUDED');
+
+// Solo configurar headers si es el archivo principal
+if ($es_archivo_principal) {
+    // Iniciar output buffering para capturar cualquier salida no deseada
+    ob_start();
+    
+    header('Content-Type: text/html; charset=utf-8');
+    date_default_timezone_set('America/Bogota');
+}
+
 session_start();
+
+// ===================================================================
+// INCLUIR AUTENTICACIÓN ANTES DE CUALQUIER USO DE SESIÓN
+// ===================================================================
+require_once(__DIR__ . '/php/auth.php');
+// ===================================================================
+// FIN DE AUTENTICACIÓN
+// ===================================================================
+
 // Habilitar la visualización de errores solo para depuración
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
@@ -37,43 +58,19 @@ function print_debug_logs() {
 // Esto es genial porque incluso si el script muere con un `exit`, los logs se mostrarán.
 register_shutdown_function('print_debug_logs');
 
-// ===================================================================
-// LÓGICA DE AUTENTICACIÓN (ahora en archivo separado)
-// ===================================================================
-require_once(__DIR__ . '/php/auth.php');
-// ===================================================================
-// FIN DE LA LÓGICA DE AUTENTICACIÓN
-// ===================================================================
-
-// ===================================================================
-// SISTEMA DE PERMISOS (ahora en archivo separado)
-// ===================================================================
-require_once(__DIR__ . '/php/permissions.php');
-// ===================================================================
-// FIN DEL SISTEMA DE PERMISOS
-// ===================================================================
-
-// ===================================================================
-// GESTIÓN DE EMPRESAS (ahora en archivo separado)
-// ===================================================================
-require_once(__DIR__ . '/php/companies.php');
-// ===================================================================
-// FIN DE GESTIÓN DE EMPRESAS
-// ===================================================================
-
-// ===================================================================
-// GESTIÓN DE PERFILES (ahora en archivo separado)
-// ===================================================================
-require_once(__DIR__ . '/php/profiles.php');
-// ===================================================================
-// FIN DE GESTIÓN DE PERFILES
-// ===================================================================
+// Conexión a la base de datos (necesaria para todas las operaciones)
 try {
+    require_once(__DIR__ . '/apis/Conectar_BD.php');
     $conn = Conectar_BD();
 } catch (Exception $e) {
     error_log('Error de conexión a la BD: ' . $e->getMessage());
     die('No se puede establecer conexión con la base de datos.');
 }
+
+// Incluir solo las funciones necesarias para el procesamiento temprano
+require_once(__DIR__ . '/php/permissions.php');
+require_once(__DIR__ . '/php/companies.php');
+require_once(__DIR__ . '/php/profiles.php');
 
 // La lógica de autenticación ahora está en php/auth.php
 // ===================================================================
@@ -86,25 +83,68 @@ try {
 // ===================================================================
 
 // --- Configuración e Inicialización ---
-header('Content-Type: text/html; charset=utf-8');
-date_default_timezone_set('America/Bogota');
 require_once('ObtActivacion.php');
 
 // --- Lógica Principal (Controlador) ---
+$Ruc = $_SESSION['Ruc'] ?? '';
+$Accion = $_GET['Accion'] ?? $_POST['Accion'] ?? 'Dashboard';
+
+// Procesar acciones que requieren JSON ANTES de cualquier salida HTML
+if ($Accion === 'Buscar_Empresas_Live') {
+    procesarBusquedaLive($conn);
+    exit; // Salir inmediatamente después de procesar la búsqueda
+}
+
+// Procesar acciones de formulario ANTES de cualquier salida HTML
+if ($Accion === 'Procesar_Alta_Empresa') {
+    verificarPermisoYSalir(usuarioPuedeCrearEmpresa());
+    procesarFormularioEmpresa($conn, null);
+    exit;
+}
+
+if ($Accion === 'Procesar_Edicion_Empresa') {
+    verificarPermisoYSalir(usuarioPuedeEditarEmpresa($Ruc));
+    procesarFormularioEmpresa($conn, $Ruc);
+    exit;
+}
+
+if ($Accion === 'Procesar_Eliminar_Empresa') {
+    verificarPermisoYSalir(usuarioPuedeEliminarEmpresa());
+    procesarEliminarEmpresa($conn, $Ruc);
+    exit;
+}
+
+if ($Accion === 'Procesar_Edicion_Perfil') {
+    procesarEdicionPerfil($conn);
+    exit;
+}
+
+// Procesar redirecciones ANTES de cualquier salida HTML
+// Procesar redirecciones de RUC
 if (isset($_REQUEST['Ruc']) && !empty($_REQUEST['Ruc'])) {
     $ruc_entrante = trim($_REQUEST['Ruc']);
     $ruc_sesion_actual = $_SESSION['Ruc'] ?? null;
     if ($ruc_entrante !== $ruc_sesion_actual) {
+        // Verificar si hay salida antes de la redirección
+        if ($es_archivo_principal && ob_get_length() > 0) {
+            $output = ob_get_clean();
+            error_log('Salida detectada antes de redirección: ' . substr($output, 0, 200));
+        }
+        
         $_SESSION['Ruc'] = $ruc_entrante;
         header('Location: ' . $_SERVER['PHP_SELF'] . '?Accion=Administrar');
         exit;
     }
 }
-$Ruc = $_SESSION['Ruc'] ?? '';
-$Accion = $_GET['Accion'] ?? $_POST['Accion'] ?? 'Dashboard';
 
 $acciones_requieren_ruc = ['Administrar', 'Editar_Empresa', 'Procesar_Edicion_Empresa', 'Eliminar_Empresa', 'Procesar_Eliminar_Empresa', 'Baja', 'Baja_Sesiones', 'Alta', 'Activar'];
 if (in_array($Accion, $acciones_requieren_ruc) && empty($Ruc)) {
+    // Verificar si hay salida antes de la redirección
+    if ($es_archivo_principal && ob_get_length() > 0) {
+        $output = ob_get_clean();
+        error_log('Salida detectada antes de redirección (RUC vacío): ' . substr($output, 0, 200));
+    }
+    
     header('Location: ' . $_SERVER['PHP_SELF']);
     exit;
 }
@@ -118,9 +158,7 @@ switch ($Accion) {
         renderizarDashboard($conn);
         break;
         
-    case 'Buscar_Empresas_Live':
-        procesarBusquedaLive($conn);
-        break;
+
 
     case 'Alta_Empresa':
         verificarPermisoYSalir(usuarioPuedeCrearEmpresa());
@@ -130,19 +168,7 @@ switch ($Accion) {
         verificarPermisoYSalir(usuarioPuedeEditarEmpresa($Ruc));
         renderizarFormularioEmpresa($conn, $Ruc);
         break;
-    case 'Procesar_Alta_Empresa':
-        verificarPermisoYSalir(usuarioPuedeCrearEmpresa());
-        procesarFormularioEmpresa($conn, null);
-        break;
-    case 'Procesar_Edicion_Empresa':
-        verificarPermisoYSalir(usuarioPuedeEditarEmpresa($Ruc));
-        procesarFormularioEmpresa($conn, $Ruc);
-        break;
-    // <-- VALIDACIÓN/ELIMINACIÓN: Nueva acción para procesar la eliminación -->
-    case 'Procesar_Eliminar_Empresa':
-        verificarPermisoYSalir(usuarioPuedeEliminarEmpresa());
-        procesarEliminarEmpresa($conn, $Ruc);
-        break;        
+        
     case 'Alta':
         renderizarPaginaAlta($conn, $Ruc);
         break;
@@ -163,9 +189,7 @@ switch ($Accion) {
     case 'Mi_Perfil':
         renderizarPaginaPerfil($conn);
         break;
-    case 'Procesar_Edicion_Perfil':
-        procesarEdicionPerfil($conn);
-        break;
+
         
     default:
         renderizarDashboard($conn);
@@ -174,12 +198,28 @@ switch ($Accion) {
 
 $conn->close();
 
+// ===================================================================
+// INCLUIR ARCHIVOS DESPUÉS DE LAS REDIRECCIONES
+// ===================================================================
+// ===================================================================
+// FIN DE INCLUSIONES
+// ===================================================================
+
+// Marcar que este archivo ha sido incluido (para futuras inclusiones)
+define('CONSULTAR_INCLUDED', true);
+
+// Limpiar el buffer de salida si es el archivo principal
+if ($es_archivo_principal) {
+    ob_end_flush();
+}
+
 // --- Bloque de Funciones ---
 
 // La función renderizarFormularioLogin está en php/auth.php
 
 function renderizarPaginaAdministracion(mysqli $conn, string $Ruc): void {
-    $nombreUsuario = htmlspecialchars($_SESSION['nombre'] ?? $_SESSION['usuario'], ENT_QUOTES, 'UTF-8');
+    $nombreUsuario = htmlspecialchars($_SESSION['nombre'] ?? $_SESSION['usuario'] ?? 'Usuario', ENT_QUOTES, 'UTF-8');
+    $perfilUsuario = htmlspecialchars($_SESSION['perfil'] ?? 'Sin perfil', ENT_QUOTES, 'UTF-8');
     $empresa = obtenerRegistroEmpresa($conn, $Ruc);
     if (!$empresa) {
         unset($_SESSION['Ruc']);
@@ -209,7 +249,7 @@ function renderizarPaginaAdministracion(mysqli $conn, string $Ruc): void {
     </head>
     <body>
         <div style="background-color:#333; color:white; padding:10px 20px; text-align:right;">
-            Bienvenido, <strong>{$nombreUsuario}</strong> ({$_SESSION['perfil']}) | <a href="?Accion=Mi_Perfil" style="color:white; text-decoration: underline;">Mi Perfil</a> | <a href="?Accion=Logout" style="color: #ffc107; text-decoration: none;">Cerrar Sesión</a>
+            Bienvenido, <strong>{$nombreUsuario}</strong> ({$perfilUsuario}) | <a href="?Accion=Mi_Perfil" style="color:white; text-decoration: underline;">Mi Perfil</a> | <a href="?Accion=Logout" style="color: #ffc107; text-decoration: none;">Cerrar Sesión</a>
         </div>
         <div class="container">
 HTML;
@@ -303,10 +343,21 @@ else {
 
     echo "<div class='suscripcion-info {$claseCssSuscripcion}'>{$mensajeSuscripcion}</div>";
     
-    $controlFsoftPorSesion = version_compare($empresa['Version_FSoft'] ?? '0.0.0', '5.2.89', '>=');
-    $controlLsoftPorSesion = version_compare($empresa['Version_LSoft'] ?? '0.0.0', '2.1.36', '>=');
-    $controlLsoftWebPorSesion = !empty($empresa['Version_LSoft_Web']); 
+    // Nueva lógica basada en campos de tipo de licenciamiento
+    // Si viene nulo o en blanco, se considera Máquina (M)
+    $tipoFsoft = trim($empresa['Tipo_Lic_FSOFT'] ?? 'M');
+    $tipoLsoft = trim($empresa['Tipo_Lic_LSOFT'] ?? 'M');
+    $controlFsoftPorSesion = !empty($tipoFsoft) && $tipoFsoft === 'S';
+    $controlLsoftPorSesion = !empty($tipoLsoft) && $tipoLsoft === 'S';
     
+    // LSOFT Web: Solo si hay licencias compradas
+    $controlLsoftWebPorSesion = !empty($empresa['Version_LSoft_Web']) && 
+        ((int)($empresa['Cant_Lic_LSOFTW_BA'] ?? 0) > 0 || 
+         (int)($empresa['Cant_Lic_LSOFTW_RP'] ?? 0) > 0 || 
+         (int)($empresa['Cant_Lic_LSOFTW_AF'] ?? 0) > 0 || 
+         (int)($empresa['Cant_Lic_LSOFTW_OP'] ?? 0) > 0);
+    
+    // Si hay mezcla (uno 'M' y otro 'S'), se toma el nuevo licenciamiento (Sesión)
     $esNuevoModelo = $controlFsoftPorSesion || $controlLsoftPorSesion || $controlLsoftWebPorSesion;
 
     $licencias = obtenerTodasLasLicenciasPorRuc($conn, $Ruc);
@@ -317,9 +368,9 @@ else {
     $statsLsoftWeb = calcularEstadisticasLicencias($licencias, $empresa, 'LSOFTW', $sesionesActivas);
     
     echo "<div style='display:flex; flex-wrap: wrap; gap: 40px; margin-bottom: 30px;'>";
-    echo renderizarBloqueSistema('F-Soft', $statsFsoft, $empresa['Version_FSoft'] ?? null, $controlFsoftPorSesion);
-    echo renderizarBloqueSistema('L-Soft', $statsLsoft, $empresa['Version_LSoft'] ?? null, $controlLsoftPorSesion);
-    echo renderizarBloqueSistema('L-Soft Web', $statsLsoftWeb, $empresa['Version_LSoft_Web'] ?? null, true);
+    echo renderizarBloqueSistema('F-Soft', $statsFsoft, $empresa['Version_FSoft'] ?? null, $controlFsoftPorSesion, $tipoFsoft);
+    echo renderizarBloqueSistema('L-Soft', $statsLsoft, $empresa['Version_LSoft'] ?? null, $controlLsoftPorSesion, $tipoLsoft);
+    echo renderizarBloqueSistema('L-Soft Web', $statsLsoftWeb, $empresa['Version_LSoft_Web'] ?? null, true, 'S');
     echo "</div>";
 
     $totalLicenciasCompradas = (int)($empresa['Cant_Lic_FSOFT_BA'] ?? 0) + (int)($empresa['Cant_Lic_LSOFT_BA'] ?? 0);
@@ -367,19 +418,22 @@ function calcularEstadisticasLicencias(array $licencias_escritorio, array $empre
         ]
     ];
 
+    // Nueva lógica basada en campos de tipo de licenciamiento
+    // Si viene nulo o en blanco, se considera Máquina (M)
     $usarModeloPorSesion = false;
     if ($sistema === 'FSOFT') {
-        $version = $empresa['Version_FSoft'] ?? '0.0.0';
-        if (version_compare($version, '5.2.89', '>=')) {
-            $usarModeloPorSesion = true;
-        }
+        $tipoFsoft = trim($empresa['Tipo_Lic_FSOFT'] ?? 'M');
+        $usarModeloPorSesion = !empty($tipoFsoft) && $tipoFsoft === 'S';
     } elseif ($sistema === 'LSOFT') {
-        $version = $empresa['Version_LSoft'] ?? '0.0.0';
-        if (version_compare($version, '2.1.36', '>=')) {
-            $usarModeloPorSesion = true;
-        }
+        $tipoLsoft = trim($empresa['Tipo_Lic_LSOFT'] ?? 'M');
+        $usarModeloPorSesion = !empty($tipoLsoft) && $tipoLsoft === 'S';
     } elseif ($sistema === 'LSOFTW') {
-        $usarModeloPorSesion = true;
+        // LSOFT Web: Solo si hay licencias compradas
+        $usarModeloPorSesion = !empty($empresa['Version_LSoft_Web']) && 
+            ((int)($empresa['Cant_Lic_LSOFTW_BA'] ?? 0) > 0 || 
+             (int)($empresa['Cant_Lic_LSOFTW_RP'] ?? 0) > 0 || 
+             (int)($empresa['Cant_Lic_LSOFTW_AF'] ?? 0) > 0 || 
+             (int)($empresa['Cant_Lic_LSOFTW_OP'] ?? 0) > 0);
     }
 
     if ($usarModeloPorSesion) {
@@ -700,13 +754,16 @@ function procesarBajaLicencia(mysqli $conn, string $Ruc, int $pkLicencia): void 
 }
 
 
-function renderizarBloqueSistema(string $sistemaNombreDisplay, array $stats, ?string $version, bool $usaControlPorSesion): string {
+function renderizarBloqueSistema(string $sistemaNombreDisplay, array $stats, ?string $version, bool $usaControlPorSesion, string $tipoLicenciamiento = 'M'): string {
     $textoControl = $usaControlPorSesion ? 'Por Sesión' : 'Por Máquina';
     $claseControl = $usaControlPorSesion ? 'control-sesion' : 'control-maquina';
     $controlInfo = "<span class='control-info {$claseControl}'>{$textoControl}</span>";
     
+    // Si viene nulo o en blanco, se considera Máquina (M)
+    $tipoLicTrim = trim($tipoLicenciamiento);
+    $tipoLicText = (!empty($tipoLicTrim) && $tipoLicTrim === 'S') ? 'Sesión' : 'Máquina';
     $versionHtml = htmlspecialchars($version ?: 'N/A', ENT_QUOTES, 'UTF-8');
-    $versionInfo = "<div style='font-size: 0.9em; color: #666; margin-bottom: 10px;'>Versión: <strong>{$versionHtml}</strong> {$controlInfo}</div>";
+    $versionInfo = "<div style='font-size: 0.9em; color: #666; margin-bottom: 10px;'>Versión: <strong>{$versionHtml}</strong> | Tipo: <strong>{$tipoLicText}</strong> {$controlInfo}</div>";
 
     $html = "<div style='border: 1px solid #ccc; padding: 15px; border-radius: 5px; flex-grow: 1; min-width: 300px;'>";
     $html .= "<h3>Licencias {$sistemaNombreDisplay}</h3>";
