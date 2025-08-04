@@ -5,18 +5,29 @@
  * @return mysqli|resource Conexión a la base de datos
  */
 function Conectar_BD($tipo = 0){ 
-   // Configuración de la base de datos
-   // DESARROLLO LOCAL - MySQL local
-   $host = 'localhost';  // MySQL local de XAMPP
-   $usuario = 'root';    // Usuario por defecto de XAMPP
-   $password = '';       // Sin contraseña por defecto
-   $database = 'listosof_listosoft';
+   // Detectar si estamos en desarrollo local o producción
+   $is_local = false;
+   if (isset($_SERVER['HTTP_HOST'])) {
+       // Si es localhost con puerto específico, es desarrollo local
+       $is_local = (strpos($_SERVER['HTTP_HOST'], 'localhost:') !== false);
+   } else {
+       // Si no hay HTTP_HOST (línea de comandos), asumir local
+       $is_local = true;
+   }
    
-   // PRODUCCIÓN - MySQL remoto (comentado para desarrollo)
-   // $host = '154.38.178.58';  // IP del servidor para acceso remoto
-   // $usuario = 'listosof';
-   // $password = 'rdtF)jHnHR*!';
-   // $database = 'listosof_listosoft';
+   if ($is_local) {
+       // DESARROLLO LOCAL - MySQL local con puerto personalizado
+       $host = 'localhost:3307';  // MySQL local de XAMPP en puerto 3307
+       $usuario = 'root';    // Usuario por defecto de XAMPP
+       $password = '';       // Sin contraseña por defecto
+       $database = 'listosof_listosoft';
+   } else {
+       // PRODUCCIÓN - MySQL local (sin puerto específico)
+       $host = 'localhost';  // MySQL en puerto por defecto (3306)
+       $usuario = 'listosof';
+       $password = 'rdtF)jHnHR*!';
+       $database = 'listosof_listosoft';
+   }
    
    if ($tipo) {
        // Conexión legacy (deprecated - no usar)
