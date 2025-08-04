@@ -17,8 +17,19 @@ try {
     if ($conn) {
         echo "✅ CONEXIÓN EXITOSA\n\n";
         
+        // Verificar estructura de tabla Empresas
+        echo "=== ESTRUCTURA DE TABLA EMPRESAS ===\n";
+        $result = $conn->query("DESCRIBE Empresas");
+        if ($result) {
+            while ($row = $result->fetch_assoc()) {
+                echo "Campo: " . $row['Field'] . " | Tipo: " . $row['Type'] . " | Null: " . $row['Null'] . " | Key: " . $row['Key'] . "\n";
+            }
+        } else {
+            echo "❌ Error al describir tabla Empresas\n";
+        }
+        
         // Verificar estructura de tabla Licencias
-        echo "=== ESTRUCTURA DE TABLA LICENCIAS ===\n";
+        echo "\n=== ESTRUCTURA DE TABLA LICENCIAS ===\n";
         $result = $conn->query("DESCRIBE Licencias");
         if ($result) {
             while ($row = $result->fetch_assoc()) {
@@ -36,6 +47,16 @@ try {
             }
         } else {
             echo "❌ Error al describir tabla Sesiones_Activas\n";
+        }
+        
+        echo "\n=== MUESTRA DE DATOS DE EMPRESAS ===\n";
+        $result = $conn->query("SELECT * FROM Empresas LIMIT 3");
+        if ($result && $result->num_rows > 0) {
+            while ($row = $result->fetch_assoc()) {
+                echo "RUC: " . $row['Ruc'] . " | Nombre: " . $row['Nombre'] . " | Baja: " . ($row['Baja'] ?? 'NULL') . "\n";
+            }
+        } else {
+            echo "❌ No hay datos en tabla Empresas o error en consulta\n";
         }
         
         echo "\n=== MUESTRA DE DATOS DE LICENCIAS ===\n";

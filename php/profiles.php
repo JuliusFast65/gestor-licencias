@@ -20,7 +20,8 @@ define('PROFILES_INCLUDED', true);
  */
 if (!function_exists('renderizarDashboard')) {
 function renderizarDashboard(mysqli $conn): void {
-    $nombreUsuario = htmlspecialchars($_SESSION['nombre'] ?? $_SESSION['usuario'], ENT_QUOTES, 'UTF-8');
+    $nombreUsuario = htmlspecialchars($_SESSION['nombre'] ?? $_SESSION['usuario'] ?? 'Usuario', ENT_QUOTES, 'UTF-8');
+    $perfilUsuario = htmlspecialchars($_SESSION['perfil'] ?? 'Sin perfil', ENT_QUOTES, 'UTF-8');
     
     // Usamos la misma estructura HTML base para consistencia
     echo <<<HTML
@@ -35,7 +36,7 @@ function renderizarDashboard(mysqli $conn): void {
     </head>
     <body>
         <div style="background-color:#333; color:white; padding:10px 20px; text-align:right;">
-            Bienvenido, <strong>{$nombreUsuario}</strong> ({$_SESSION['perfil']}) | <a href="?Accion=Mi_Perfil" style="color:white; text-decoration: underline;">Mi Perfil</a> | <a href="?Accion=Logout" style="color: #ffc107; text-decoration: none;">Cerrar Sesión</a>
+            Bienvenido, <strong>{$nombreUsuario}</strong> ({$perfilUsuario}) | <a href="?Accion=Mi_Perfil" style="color:white; text-decoration: underline;">Mi Perfil</a> | <a href="?Accion=Logout" style="color: #ffc107; text-decoration: none;">Cerrar Sesión</a>
         </div>
         <div class="container">
 HTML;
