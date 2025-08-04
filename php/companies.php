@@ -534,7 +534,7 @@ function renderizarScriptBusqueda(): string {
                 }
                 debounceTimer = setTimeout(() => {
                     contenedorResultados.innerHTML = '<p>Buscando...</p>';
-                    fetch(`busqueda_directa.php?q=\${encodeURIComponent(termino)}`)
+                    fetch(`Consultar.php?Accion=Buscar_Empresas_Live&q=\${encodeURIComponent(termino)}`)
                         .then(response => {
                             if (response.status === 401) {
                                 // No autenticado, redirigir al login
