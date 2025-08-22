@@ -81,7 +81,7 @@ try {
     $stmt_conteo = $mysqli->prepare(
         "SELECT tipo, COUNT(DISTINCT Serie) AS total
          FROM sesiones_erp
-         WHERE Ruc = ? AND Serie != ? AND (estado = 'A' OR estado IS NULL)
+         WHERE Ruc = ? AND Serie != ?
          GROUP BY tipo"
     );
     $stmt_conteo->bind_param('ss', $RUC, $Serie);
