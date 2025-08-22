@@ -1,0 +1,24 @@
+{
+    "ejemplos": {
+        "hibernar_sesion": {
+            "descripcion": "JSON para hibernar una sesión ERP",
+            "payload": {
+                "RUC": "0992671661001",
+                "ping_token": "abc123def456ghi789"
+            },
+            "headers_requeridos": {
+                "Content-Type": "application/json",
+                "X-Timestamp": "1705312800",
+                "X-Signature": "firma_hmac_generada"
+            }
+        }
+    },
+    "notas": {
+        "ping_token": "Debe ser un token válido de una sesión activa",
+        "RUC": "Debe coincidir con el RUC de la sesión",
+        "seguridad": "Requiere validación de firma HMAC",
+        "base_url": "http://localhost/apis/Hibernar_Sesion.php",
+        "despertar": "El despertar se maneja automáticamente en Ping_Sesion.php"
+    }
+}
+

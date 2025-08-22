@@ -77,11 +77,11 @@ try {
     }
     log_debug('Cupos de licencias obtenidos.');
 
-    // Conteo sesiones activas
+    // Conteo sesiones activas (excluyendo hibernadas)
     $stmt_conteo = $mysqli->prepare(
         "SELECT tipo, COUNT(DISTINCT Serie) AS total
          FROM sesiones_erp
-         WHERE Ruc = ? AND Serie != ?
+         WHERE Ruc = ? AND Serie != ? AND (estado = 'A' OR estado IS NULL)
          GROUP BY tipo"
     );
     $stmt_conteo->bind_param('ss', $RUC, $Serie);
