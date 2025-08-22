@@ -241,10 +241,12 @@ function renderizarPaginaAdministracion(mysqli $conn, string $Ruc): void {
             .control-info { font-size: 0.8em; color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 10px; vertical-align: middle; }
             .control-sesion { background-color: #28a745; }
             .control-maquina { background-color: #17a2b8; }
-            .fila-fsoft { background-color: #e7f5ff !important; }
-            .fila-lsoft { background-color: #e6fffa !important; }
-            .fila-lsoftw { background-color: #f9f0ff !important; }
-            tr:hover { background-color: #f5f5f5 !important; }
+                         .fila-fsoft { background-color: #e7f5ff !important; }
+             .fila-lsoft { background-color: #e6fffa !important; }
+             .fila-lsoftw { background-color: #f9f0ff !important; }
+             tr:hover { background-color: #f5f5f5 !important; }
+             .estado-activa { color: #28a745; font-weight: bold; }
+             .estado-hibernada { color: #dc3545; font-weight: bold; }
         </style>
     </head>
     <body>
@@ -386,7 +388,7 @@ else {
 // La función obtenerRegistroEmpresa está en php/companies.php
 
 function obtenerSesionesActivasPorRuc(mysqli $conn, string $Ruc): array {
-    $sql = "SELECT Serie, usuario, tipo, ultima_actividad 
+    $sql = "SELECT Serie, usuario, tipo, ultima_actividad, fecha_hibernacion 
             FROM sesiones_erp 
             WHERE Ruc = ? 
             ORDER BY ultima_actividad DESC";
@@ -622,10 +624,19 @@ function renderizarTablaLicencias(mysqli $conn, array $licencias, int $totalSlot
 
             if ($tieneSesiones) {
                 $html .= "<tr class='sesiones-detalle-fila' id='sesiones-{$serie}' style='display:none;'><td colspan='13'><div class='sesiones-detalle-contenido'>";
-                $html .= "<table><thead><th>Usuario</th><th>Tipo Sesión</th><th>Última Actividad</th></thead><tbody>";
+                $html .= "<table><thead><th>Usuario</th><th>Tipo Sesión</th><th>Última Actividad</th><th>Estado Hibernación</th></thead><tbody>";
                 foreach ($sesionesFiltradas['detalles'] as $detalle) {
                     $tipo_sesion_legible = $traducciones_sesion[$detalle['tipo']] ?? htmlspecialchars($detalle['tipo']);
-                    $html .= "<tr><td>" . htmlspecialchars($detalle['usuario']) . "</td><td>" . $tipo_sesion_legible . "</td><td>" . htmlspecialchars(date('d M y H:i', strtotime($detalle['ultima_actividad']))) . "</td></tr>";
+                    
+                    // Determinar el estado de hibernación
+                    $estadoHibernacion = 'Activa';
+                    $claseEstado = 'estado-activa';
+                    if (!empty($detalle['fecha_hibernacion'])) {
+                        $estadoHibernacion = 'Hibernada: ' . date('d M y H:i', strtotime($detalle['fecha_hibernacion']));
+                        $claseEstado = 'estado-hibernada';
+                    }
+                    
+                    $html .= "<tr><td>" . htmlspecialchars($detalle['usuario']) . "</td><td>" . $tipo_sesion_legible . "</td><td>" . htmlspecialchars(date('d M y H:i', strtotime($detalle['ultima_actividad']))) . "</td><td class='{$claseEstado}'>" . $estadoHibernacion . "</td></tr>";
                 }
                 $html .= "</tbody></table></div></td></tr>";
             }
