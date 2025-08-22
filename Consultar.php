@@ -548,8 +548,33 @@ function renderizarTablaLicencias(mysqli $conn, array $licencias, int $totalSlot
 
         foreach ($licencias as $l) {
             $serie = htmlspecialchars($l['Serie'], ENT_QUOTES, 'UTF-8');
-            $sesiones = $sesionesPorSerie[$l['Serie']] ?? null;
-            $tieneSesiones = !empty($sesiones);
+            $sistemaLicencia = strtoupper($l['Sistema']);
+            
+            // Filtrar sesiones solo del sistema de esta licencia
+            $sesionesFiltradas = null;
+            if (isset($sesionesPorSerie[$l['Serie']])) {
+                $sesionesFiltradas = [
+                    'fsoft_ba' => 0, 'fsoft_mod' => 0, 
+                    'lsoft_ba' => 0, 'lsoft_mod' => 0, 
+                    'lsoftw_ba' => 0, 'lsoftw_mod' => 0, 
+                    'detalles' => []
+                ];
+                
+                foreach ($sesionesPorSerie[$l['Serie']]['detalles'] as $sesion) {
+                    if (strpos($sesion['tipo'], $sistemaLicencia . '_') === 0) {
+                        $tipo = $sesion['tipo'];
+                        if ($tipo === 'FSOFT_BA') $sesionesFiltradas['fsoft_ba']++;
+                        elseif (strpos($tipo, 'FSOFT_') === 0) $sesionesFiltradas['fsoft_mod']++;
+                        elseif ($tipo === 'LSOFT_BA') $sesionesFiltradas['lsoft_ba']++;
+                        elseif (strpos($tipo, 'LSOFT_') === 0) $sesionesFiltradas['lsoft_mod']++;
+                        elseif ($tipo === 'LSOFTW_BA') $sesionesFiltradas['lsoftw_ba']++;
+                        elseif (strpos($tipo, 'LSOFTW_') === 0) $sesionesFiltradas['lsoftw_mod']++;
+                        $sesionesFiltradas['detalles'][] = $sesion;
+                    }
+                }
+            }
+            
+            $tieneSesiones = !empty($sesionesFiltradas) && !empty($sesionesFiltradas['detalles']);
             
             $estiloFila = $tieneSesiones ? "cursor:pointer; text-decoration: underline; text-decoration-style: dotted;" : '';
             $filaOnclick = $tieneSesiones ? "onclick=\"toggleSesiones('{$serie}')\"" : '';
@@ -570,12 +595,12 @@ function renderizarTablaLicencias(mysqli $conn, array $licencias, int $totalSlot
             $html .= "<td>{$serie}</td>";
             $html .= "<td>" . htmlspecialchars($l['Sistema']) . "</td>";
             $html .= "<td>{$tipoLicenciaNombre}</td>";
-            $html .= "<td>" . ($sesiones['fsoft_ba'] ?? 0) . "</td>";
-            $html .= "<td>" . ($sesiones['fsoft_mod'] ?? 0) . "</td>";
-            $html .= "<td>" . ($sesiones['lsoft_ba'] ?? 0) . "</td>";
-            $html .= "<td>" . ($sesiones['lsoft_mod'] ?? 0) . "</td>";
-            $html .= "<td>" . ($sesiones['lsoftw_ba'] ?? 0) . "</td>";
-            $html .= "<td>" . ($sesiones['lsoftw_mod'] ?? 0) . "</td>";
+            $html .= "<td>" . ($sesionesFiltradas['fsoft_ba'] ?? 0) . "</td>";
+            $html .= "<td>" . ($sesionesFiltradas['fsoft_mod'] ?? 0) . "</td>";
+            $html .= "<td>" . ($sesionesFiltradas['lsoft_ba'] ?? 0) . "</td>";
+            $html .= "<td>" . ($sesionesFiltradas['lsoft_mod'] ?? 0) . "</td>";
+            $html .= "<td>" . ($sesionesFiltradas['lsoftw_ba'] ?? 0) . "</td>";
+            $html .= "<td>" . ($sesionesFiltradas['lsoftw_mod'] ?? 0) . "</td>";
             $html .= "<td>" . ($l['Ultimo_Acceso'] ? date('d M y H:i', strtotime($l['Ultimo_Acceso'])) : 'N/A') . "</td>";
             
             $celdaAcciones = "<td>";
@@ -598,7 +623,7 @@ function renderizarTablaLicencias(mysqli $conn, array $licencias, int $totalSlot
             if ($tieneSesiones) {
                 $html .= "<tr class='sesiones-detalle-fila' id='sesiones-{$serie}' style='display:none;'><td colspan='13'><div class='sesiones-detalle-contenido'>";
                 $html .= "<table><thead><th>Usuario</th><th>Tipo Sesión</th><th>Última Actividad</th></thead><tbody>";
-                foreach ($sesiones['detalles'] as $detalle) {
+                foreach ($sesionesFiltradas['detalles'] as $detalle) {
                     $tipo_sesion_legible = $traducciones_sesion[$detalle['tipo']] ?? htmlspecialchars($detalle['tipo']);
                     $html .= "<tr><td>" . htmlspecialchars($detalle['usuario']) . "</td><td>" . $tipo_sesion_legible . "</td><td>" . htmlspecialchars(date('d M y H:i', strtotime($detalle['ultima_actividad']))) . "</td></tr>";
                 }
