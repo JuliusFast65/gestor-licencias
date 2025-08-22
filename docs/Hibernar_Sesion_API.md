@@ -2,7 +2,7 @@
 
 ## Descripción General
 
-El endpoint `Hibernar_Sesion.php` permite marcar las sesiones del ERP como hibernadas cuando el sistema se va a hibernar, manteniendo las licencias reservadas temporalmente. El despertar se maneja mediante `Registrar_Sesion.php` cuando se necesita reactivar la sesión. Las licencias se liberan automáticamente después de 2 horas de hibernación mediante un evento MySQL.
+El endpoint `Hibernar_Sesion.php` permite marcar las sesiones del ERP como hibernadas cuando el sistema se va a hibernar, manteniendo las licencias reservadas temporalmente. El despertar se maneja automáticamente en `Ping_Sesion.php` cuando detecta que la sesión está hibernada y la reactiva. Las licencias se liberan automáticamente después de 2 horas de hibernación mediante un evento MySQL.
 
 ## Información del Endpoint
 
@@ -17,7 +17,7 @@ Este endpoint es parte del sistema de gestión de licencias y sesiones ERP, dise
 - Marcar sesiones activas como hibernadas
 - Mantener licencias reservadas temporalmente durante períodos de inactividad
 - Mantener un registro del estado de hibernación de las sesiones
-- Permitir la reactivación mediante nuevo registro de sesión cuando se necesite
+- Permitir la reactivación automática mediante `Ping_Sesion.php` cuando se detecte actividad
 
 ## Parámetros de Entrada
 
@@ -131,7 +131,8 @@ graph TD
     L --> M{Timeout 2h?}
     M -->|Sí| N[Evento MySQL Libera Licencia]
     M -->|No| O[Puede Reactivar]
-    O --> P[Registrar_Sesion.php]
+    O --> P[Ping_Sesion.php Detecta Hibernación]
+    P --> Q[Reactivación Automática]
 ```
 
 ## Dependencias
@@ -167,8 +168,8 @@ El endpoint incluye logs de depuración detallados para:
 
 ## Integración con Otros Endpoints
 
-- **Registrar_Sesion.php**: Se utiliza para reactivar sesiones hibernadas mediante nuevo registro
-- **Ping_Sesion.php**: Monitorea la actividad de las sesiones activas
+- **Ping_Sesion.php**: Detecta automáticamente sesiones hibernadas y las reactiva al detectar actividad
+- **Registrar_Sesion.php**: Se utiliza solo para crear sesiones completamente nuevas
 - **Logout_Sesion.php**: Cierra sesiones permanentemente
 - **Evento MySQL**: Libera automáticamente licencias de sesiones hibernadas después de 2 horas
 
@@ -200,7 +201,8 @@ if ($response['Fin'] === 'OK') {
 - El estado 'H' indica que la sesión está hibernada
 - **Importante**: Al hibernar se mantienen las licencias reservadas por 2 horas
 - **Timeout automático**: Las licencias se liberan automáticamente después de 2 horas de hibernación
-- **Reactivación**: Requiere nuevo registro de sesión mediante `Registrar_Sesion.php`
+- **Reactivación automática**: `Ping_Sesion.php` detecta hibernación y reactiva la sesión automáticamente
+- **No requiere nuevo registro**: Se reactiva la sesión existente, manteniendo el historial
 
 ## Versión y Mantenimiento
 
