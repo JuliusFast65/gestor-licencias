@@ -2,7 +2,7 @@
 
 ## Descripción General
 
-El endpoint `Hibernar_Sesion.php` permite marcar las sesiones del ERP como hibernadas cuando el sistema se va a hibernar, liberando temporalmente las licencias. El despertar se maneja mediante `Registrar_Sesion.php` cuando se necesita reactivar la sesión, ya que las licencias se liberan durante la hibernación.
+El endpoint `Hibernar_Sesion.php` permite marcar las sesiones del ERP como hibernadas cuando el sistema se va a hibernar, manteniendo las licencias reservadas temporalmente. El despertar se maneja mediante `Registrar_Sesion.php` cuando se necesita reactivar la sesión. Las licencias se liberan automáticamente después de 2 horas de hibernación mediante un evento MySQL.
 
 ## Información del Endpoint
 
@@ -15,7 +15,7 @@ El endpoint `Hibernar_Sesion.php` permite marcar las sesiones del ERP como hiber
 
 Este endpoint es parte del sistema de gestión de licencias y sesiones ERP, diseñado para:
 - Marcar sesiones activas como hibernadas
-- Liberar temporalmente licencias durante períodos de inactividad
+- Mantener licencias reservadas temporalmente durante períodos de inactividad
 - Mantener un registro del estado de hibernación de las sesiones
 - Permitir la reactivación mediante nuevo registro de sesión cuando se necesite
 
@@ -126,6 +126,12 @@ graph TD
     H --> I[Commit Transacción]
     I --> J[Respuesta Exitosa]
     F --> K[Respuesta de Error]
+    
+    J --> L[Licencia Reservada por 2h]
+    L --> M{Timeout 2h?}
+    M -->|Sí| N[Evento MySQL Libera Licencia]
+    M -->|No| O[Puede Reactivar]
+    O --> P[Registrar_Sesion.php]
 ```
 
 ## Dependencias
@@ -155,15 +161,16 @@ El endpoint incluye logs de depuración detallados para:
 
 1. **Hibernación del Sistema**: Cuando el ERP se va a hibernar por inactividad
 2. **Mantenimiento Programado**: Durante períodos de mantenimiento del sistema
-3. **Gestión de Recursos**: Para liberar licencias temporalmente y permitir su reasignación
+3. **Gestión de Recursos**: Para mantener licencias reservadas temporalmente
 4. **Control de Sesiones**: Para mantener un registro del estado de las sesiones
-5. **Optimización de Licencias**: Para maximizar el uso de licencias disponibles
+5. **Protección de Licencias**: Para evitar que otras empresas usen licencias temporalmente inactivas
 
 ## Integración con Otros Endpoints
 
-- **Registrar_Sesion.php**: Se utiliza para reactivar sesiones hibernadas, ya que las licencias se liberan durante la hibernación
+- **Registrar_Sesion.php**: Se utiliza para reactivar sesiones hibernadas mediante nuevo registro
 - **Ping_Sesion.php**: Monitorea la actividad de las sesiones activas
 - **Logout_Sesion.php**: Cierra sesiones permanentemente
+- **Evento MySQL**: Libera automáticamente licencias de sesiones hibernadas después de 2 horas
 
 ## Ejemplo de Implementación
 
@@ -191,8 +198,9 @@ if ($response['Fin'] === 'OK') {
 - Los logs de debug están habilitados por defecto (configurable en `DEBUG_MODE`)
 - La respuesta incluye información detallada de la sesión hibernada
 - El estado 'H' indica que la sesión está hibernada
-- **Importante**: Al hibernar se liberan las licencias, por lo que la reactivación requiere un nuevo registro de sesión
-- Las licencias liberadas pueden ser reasignadas a otras sesiones activas
+- **Importante**: Al hibernar se mantienen las licencias reservadas por 2 horas
+- **Timeout automático**: Las licencias se liberan automáticamente después de 2 horas de hibernación
+- **Reactivación**: Requiere nuevo registro de sesión mediante `Registrar_Sesion.php`
 
 ## Versión y Mantenimiento
 
